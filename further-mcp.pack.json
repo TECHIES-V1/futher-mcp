@@ -1,0 +1,24 @@
+{
+  "name": "further-mcp",
+  "version": "0.1.0",
+  "description": "Combined ebook-to-markdown MCP plus OpenLibrary search pack.",
+  "mcp": {
+    "fastmcp": {
+      "module": "further_mcp.mcp_server",
+      "callable": "main"
+    },
+    "fastapi": {
+      "module": "further_mcp.fastapi_server",
+      "callable": "start_fastapi"
+    }
+  },
+  "environment": [
+    "OPENLIBRARY_BASE_URL",
+    "EBOOK_ROOT_PATH",
+    "LOG_LEVEL"
+  ],
+  "commands": {
+    "start-fastapi": "further-mcp-fastapi",
+    "start-mcp": "further-mcp"
+  }
+}

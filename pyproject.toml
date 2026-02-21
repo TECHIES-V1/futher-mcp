@@ -1,0 +1,37 @@
+[project]
+name = "further-mcp"
+version = "0.1.0"
+description = "Combined ebook reader and OpenLibrary search MCP with FastAPI + FastMCP interfaces."
+authors = [{ name = "Contractor", email = "contractor@example.com" }]
+readme = "README.md"
+requires-python = ">=3.11"
+
+dependencies = [
+    "fastapi>=0.116.0",
+    "fastmcp>=2.11.1",
+    "uvicorn>=0.24.0",
+    "ebooklib>=0.19",
+    "PyMuPDF>=1.26.3",
+    "beautifulsoup4>=4.13.4",
+    "html2text>=2025.4.15",
+    "pydantic>=2.11.7",
+    "httpx>=0.28.0",
+    "python-dotenv>=1.1.0"
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.4.0",
+    "pytest-asyncio>=0.22.0"
+]
+
+[project.scripts]
+further-mcp = "further_mcp.mcp_server:main"
+further-mcp-fastapi = "further_mcp.fastapi_server:start_fastapi"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/further_mcp"]

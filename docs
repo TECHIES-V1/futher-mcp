@@ -1,0 +1,9 @@
+## How to run the MCP
+- after creating your venv
+- activate source "/Your path to file location/futher-mcp/venv/bin/activate"    
+- install requirements "pip install requirements.txt"
+- Start the server " PYTHONPATH=src uvicorn further_mcp.fastapi_server:APP --host 0.0.0.0 --port 8000" {in Linux}
+
+## To get results
+- run " ─$ curl --silent 'http://localhost:8000/discovery/search?query=pythonprogramming&limit=3' | jq .
+- if you wanna specify topics with multiple phrases dont forget to put + {eg python+Programming or Introduction+to+mathematics}

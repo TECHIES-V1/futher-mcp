@@ -34,6 +34,31 @@ class BookDetails(BaseModel):
         return str(value).strip()
 
 
+class BookFormatLink(BaseModel):
+    format: str
+    url: str
+    label: str | None = None
+
+
+class DiscoveryBook(BaseModel):
+    title: str | None = Field(None)
+    authors: list[str] = Field(default_factory=list)
+    year: int | None = Field(None)
+    source: str = Field(...)
+    source_id: str | None = Field(None)
+    description: str | None = Field(None)
+    download_links: list[BookFormatLink] = Field(default_factory=list)
+    extra: dict[str, Any] | None = Field(None)
+
+
+class DiscoveryResponse(BaseModel):
+    source: str
+    query: str
+    total_results: int | None = None
+    books: list[DiscoveryBook] = Field(default_factory=list)
+    timestamp: str = Field(default_factory=lambda: datetime.utcnow().isoformat())
+
+
 class OpenLibrary(BaseModel):
     model_config = ConfigDict(extra="ignore", validate_default=True)
     num_found: int = Field(default=0)

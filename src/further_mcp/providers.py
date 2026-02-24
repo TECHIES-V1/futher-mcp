@@ -16,7 +16,7 @@ class OpenLibraryProvider:
 
     def __init__(self, base_url: str | None = None):
         self.base_url = base_url or os.getenv("OPENLIBRARY_BASE_URL", "https://openlibrary.org")
-        logger.info("Initialized OpenLibraryProvider", base_url=self.base_url)
+        logger.info("Initialized OpenLibraryProvider with %s", self.base_url)
 
     def _build_query(self, query: str, keywords: Sequence[str] | None = None) -> str:
         tokens = []
@@ -43,7 +43,7 @@ class OpenLibraryProvider:
         url = f"{self.base_url}{path}"
 
         async with httpx.AsyncClient(timeout=30) as client:
-            logger.debug("Calling OpenLibrary API", url=url, params=params)
+            logger.debug("Calling OpenLibrary API: %s with params %s", url, params)
             response = await client.get(url, params=params)
             response.raise_for_status()
             return response.json()

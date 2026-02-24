@@ -1,0 +1,31 @@
+{
+  "manifest_version": "0.2",
+  "name": "futher-mcp",
+  "display_name": "Futher-MCP",
+  "version": "1.0.1",
+  "description": "An model context protocol that calls books form various and huge open source platforms and lets AI analyze and understands them.",
+  "author": {
+    "name": "Techies",
+    "email": "dada4ash@gmail.com",
+    "url": "https://github.com/Contractor-x"
+  },
+  "icon": "src/icons/further.png",
+  "server": {
+    "type": "python",
+    "entry_point": "main.py",
+    "mcp_config": {
+      "command": "python",
+      "args": [
+        "${__dirname}/main.py"
+      ],
+      "env": {
+        "PYTHONPATH": "${__dirname}/src"
+      }
+    }
+  },
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/TECHIES-V1/futher-mcp"
+  }
+}

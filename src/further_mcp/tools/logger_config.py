@@ -3,6 +3,7 @@ import json
 import os
 import time
 from datetime import datetime
+from pathlib import Path
 from typing import Dict, Any
 from functools import wraps
 import traceback
@@ -60,11 +61,10 @@ class StructuredLogger:
 def setup_logger(level: str = "INFO", log_file: str = "further_mcp.log") -> logging.Logger:
     """Configure both structured file logging and readable console output."""
 
-    base_dir = os.path.join(os.path.dirname(__file__), "..", "..")
-    log_dir = os.path.join(base_dir, "logs")
-    os.makedirs(log_dir, exist_ok=True)
+    log_dir = Path(os.getenv("FURTHER_MCP_LOG_DIR", "/tmp/further_mcp_logs"))
+    log_dir.mkdir(parents=True, exist_ok=True)
 
-    log_path = os.path.join(log_dir, log_file)
+    log_path = log_dir / log_file
 
     root_logger = logging.getLogger()
     root_logger.setLevel(getattr(logging, level.upper()))
@@ -74,7 +74,7 @@ def setup_logger(level: str = "INFO", log_file: str = "further_mcp.log") -> logg
     structured = StructuredFormatter()
     console = logging.Formatter("%(asctime)s - %(name)s - %(levelname)s - %(message)s")
 
-    file_handler = logging.FileHandler(log_path, encoding="utf-8")
+    file_handler = logging.FileHandler(str(log_path), encoding="utf-8")
     file_handler.setFormatter(structured)
     file_handler.setLevel(logging.DEBUG)
 

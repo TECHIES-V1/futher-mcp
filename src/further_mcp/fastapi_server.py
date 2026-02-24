@@ -2,13 +2,16 @@ from __future__ import annotations
 
 import os
 from pathlib import Path
-from typing import Sequence
+from typing import List, Sequence
 
 import uvicorn
 from dotenv import load_dotenv
 from fastapi import FastAPI, HTTPException, Query
+from pydantic import BaseModel, Field, HttpUrl
 from fastapi.middleware.cors import CORSMiddleware
 
+from .discovery import DiscoveryProvider
+from .pipeline import download_book, parse_book
 from .providers import OpenLibraryProvider
 from .tools import ebook_helper, pdf_helper, setup_logger, get_logger
 
@@ -118,6 +121,59 @@ def pdf_chapter_text(path: str = Query(...), chapter_title: str = Query(..., min
         raise HTTPException(status_code=415, detail="PDF required")
     content, pages = pdf_helper.extract_chapter_by_title(str(resolved), chapter_title)
     return {"content": content, "pages": pages}
+
+
+def _normalize_sources(sources: List[str] | None) -> list[str] | None:
+    if not sources:
+        return None
+    return [source.strip().lower() for source in sources if source.strip()]
+
+
+class PipelineRequest(BaseModel):
+    url: HttpUrl
+    limit_pages: int = Field(3, ge=1, le=12)
+    limit_chapters: int = Field(3, ge=1, le=12)
+
+
+@APP.get("/discovery/search")
+async def discovery_search(
+    query: str = Query(..., min_length=1),
+    sources: List[str] | None = Query(None),
+    limit: int = Query(5, ge=1, le=20),
+) -> dict:
+    provider = DiscoveryProvider()
+    normalized = _normalize_sources(sources)
+    return await provider.discover_books(query=query, sources=normalized, limit=limit)
+
+
+@APP.get("/discovery/gutendex")
+async def discovery_gutendex(query: str = Query(..., min_length=1), limit: int = Query(5, ge=1, le=20)) -> dict:
+    provider = DiscoveryProvider()
+    return (await provider.gutendex_search(query=query, limit=limit)).model_dump()
+
+
+@APP.get("/discovery/openlibrary")
+async def discovery_openlibrary(
+    query: str = Query(..., min_length=1),
+    limit: int = Query(5, ge=1, le=20),
+) -> dict:
+    provider = DiscoveryProvider()
+    return (await provider.openlibrary_search(query=query, limit=limit)).model_dump()
+
+
+@APP.get("/discovery/standard-ebooks")
+async def discovery_standard_ebooks(
+    query: str = Query(..., min_length=1),
+    limit: int = Query(5, ge=1, le=20),
+) -> dict:
+    provider = DiscoveryProvider()
+    return (await provider.standard_ebooks_search(query=query, limit=limit)).model_dump()
+
+
+@APP.post("/pipeline/fetch-parse")
+def pipeline_fetch_parse(request: PipelineRequest) -> dict:
+    file_path = download_book(request.url, EBOOK_ROOT)
+    return parse_book(file_path, limit_pages=request.limit_pages, limit_chapters=request.limit_chapters)
 
 
 def start_fastapi(host: str = "0.0.0.0", port: int = 8000) -> None:

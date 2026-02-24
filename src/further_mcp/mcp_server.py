@@ -1,11 +1,15 @@
 from __future__ import annotations
 
+import inspect
 import os
+from functools import wraps
 from pathlib import Path
 from typing import Sequence
 
 from fastmcp import FastMCP
 
+from .discovery import DiscoveryProvider
+from .pipeline import download_book, parse_book
 from .providers import OpenLibraryProvider
 from .models import AuthorDetails, OpenLibrary
 from .tools import ebook_helper, pdf_helper, setup_logger, get_logger
@@ -13,7 +17,7 @@ from .tools import ebook_helper, pdf_helper, setup_logger, get_logger
 setup_logger(level=os.getenv("LOG_LEVEL", "INFO"))
 LOGGER = get_logger(__name__)
 
-ROOT_PATH = Path(os.getenv("EBOOK_ROOT_PATH", "ebooks")).resolve()
+ROOT_PATH = Path.home() / "ebooks"
 ROOT_PATH.mkdir(parents=True, exist_ok=True)
 
 
@@ -27,6 +31,7 @@ def _resolve_path(path: str) -> Path:
 
 
 def _handle_file_operation(func):
+    @wraps(func)
     def wrapper(*args, **kwargs):
         try:
             return func(*args, **kwargs)
@@ -34,6 +39,7 @@ def _handle_file_operation(func):
             LOGGER.error("File operation failed", error_type=type(exc).__name__, error_details=str(exc))
             raise
 
+    wrapper.__signature__ = inspect.signature(func)  # type: ignore[attr-defined]
     return wrapper
 
 
@@ -64,6 +70,28 @@ async def search_author_with_book_name(query: str) -> AuthorDetails:
     LOGGER.info("search_author_with_book_name called", query=query)
     provider = OpenLibraryProvider()
     return await provider.search_author_with_book_name(query)
+
+
+@MCP_APP.tool()
+async def discover_books(
+    query: str,
+    sources: Sequence[str] | None = None,
+    limit: int = 5,
+) -> dict:
+    LOGGER.info("discover_books called", query=query, sources=sources, limit=limit)
+    provider = DiscoveryProvider()
+    return await provider.discover_books(query=query, sources=sources, limit=limit)
+
+
+@MCP_APP.tool()
+def fetch_and_parse_book(
+    url: str,
+    limit_pages: int = 3,
+    limit_chapters: int = 3,
+) -> dict:
+    LOGGER.info("fetch_and_parse_book called", url=url)
+    file_path = download_book(url, ROOT_PATH)
+    return parse_book(file_path, limit_pages=limit_pages, limit_chapters=limit_chapters)
 
 
 @MCP_APP.tool()

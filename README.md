@@ -53,6 +53,8 @@ Further-MCP merges the PDF/EPUB processing layer from `ebook-mcp` with the OpenL
 | `/ebooks/epub/chapter-markdown` | GET | Get chapter Markdown (`chapter` param). |
 | `/ebooks/pdf/chapter-text` | GET | Get text + pages for a PDF chapter title match. |
 | `/pipeline/fetch-parse` | POST | Download a discovery URL (EPUB/PDF/text), save it under `EBOOK_ROOT_PATH`, and return a parsed summary of the first few pages/chapters (send JSON payload, see below). |
+| `/pipeline/topic` | POST | Search by topic, download up to `download_limit` books, parse them, and return AI-readable summaries. |
+| `/pipeline/topic/sse` | GET | SSE stream variant of `/pipeline/topic` for live agent consumption. |
 | `/discovery/search` | GET | Aggregate Gutendex / OpenLibrary / Standard Ebooks results with downloadable EPUB/PDF URLs (use `sources=gutendex`). |
 | `/discovery/gutendex` | GET | Search Gutendex directly. |
 | `/discovery/openlibrary` | GET | Search OpenLibrary and include Internet Archive download URLs for `ia` editions. |
@@ -70,6 +72,24 @@ Call `/pipeline/fetch-parse` with JSON (`Content-Type: application/json`):
   "limit_pages": 2,
   "limit_chapters": 2
 }
+```
+
+### Topic pipeline request
+
+Call `/pipeline/topic` with JSON (`Content-Type: application/json`):
+
+```json
+{
+  "query": "python programming",
+  "limit": 30,
+  "download_limit": 30
+}
+```
+
+SSE stream variant:
+
+```bash
+curl -N "http://localhost:8000/pipeline/topic/sse?query=python%20programming&limit=30&download_limit=30"
 ```
 
 The response is structured so the AI can read it directly:
@@ -132,8 +152,8 @@ The `further-mcp.pack.json` manifest describes this project as a deployable `mcp
 ## Deployment hints
 
 1. **Railway/Render**
-   - Point the start command to `python -m further_mcp.fastapi_server` or call `further-mcp-fastapi`.
-   - Add `PYTHONPATH=src` if required by your environment.
+   - Build command: `pip install -r requirements.txt && pip install .`
+   - Start command: `uvicorn main:app --host 0.0.0.0 --port $PORT`
    - Configure the `.env` variables via the service’s UI.
 2. **Logs**
    - Structured logs land in the directory set by `FURTHER_MCP_LOG_DIR` (`/tmp/further_mcp_logs` by default), while stdout/stderr carries a readable mirror.

@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import asyncio
+import json
 import os
 from pathlib import Path
 from typing import List, Sequence
@@ -7,6 +9,8 @@ from typing import List, Sequence
 import uvicorn
 from dotenv import load_dotenv
 from fastapi import FastAPI, HTTPException, Query
+from fastapi.concurrency import run_in_threadpool
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field, HttpUrl
 from fastapi.middleware.cors import CORSMiddleware
 
@@ -135,6 +139,39 @@ class PipelineRequest(BaseModel):
     limit_chapters: int = Field(3, ge=1, le=12)
 
 
+class TopicPipelineRequest(BaseModel):
+    query: str = Field(..., min_length=2)
+    sources: List[str] | None = None
+    limit: int = Field(30, ge=1, le=50)
+    download_limit: int = Field(30, ge=1, le=100)
+    limit_pages: int = Field(3, ge=1, le=12)
+    limit_chapters: int = Field(3, ge=1, le=12)
+
+
+def _normalize_query_text(query: str) -> str:
+    normalized = query.replace("+", " ")
+    normalized = " ".join(normalized.split())
+    return normalized.strip()
+
+
+def _pick_download_url(download_links: list[dict] | list) -> str | None:
+    if not download_links:
+        return None
+    priorities = ("pdf", "application/pdf", "epub", "application/epub+zip", "text/plain")
+    for pref in priorities:
+        for item in download_links:
+            fmt = str(item.get("format", "")).lower()
+            url = item.get("url")
+            if url and pref in fmt:
+                return str(url)
+    first = download_links[0]
+    return str(first.get("url")) if first.get("url") else None
+
+
+def _sse_line(event: str, payload: dict) -> str:
+    return f"event: {event}\ndata: {json.dumps(payload, ensure_ascii=True)}\n\n"
+
+
 @APP.get("/discovery/search")
 async def discovery_search(
     query: str = Query(..., min_length=1),
@@ -174,6 +211,90 @@ async def discovery_standard_ebooks(
 def pipeline_fetch_parse(request: PipelineRequest) -> dict:
     file_path = download_book(request.url, EBOOK_ROOT)
     return parse_book(file_path, limit_pages=request.limit_pages, limit_chapters=request.limit_chapters)
+
+
+@APP.post("/pipeline/topic")
+async def pipeline_topic(request: TopicPipelineRequest) -> dict:
+    return await run_in_threadpool(_pipeline_topic_sync, request)
+
+
+def _pipeline_topic_sync(request: TopicPipelineRequest) -> dict:
+    provider = DiscoveryProvider()
+    query = _normalize_query_text(request.query)
+    normalized_sources = _normalize_sources(request.sources)
+    discovery = asyncio.run(provider.discover_books(query=query, sources=normalized_sources, limit=request.limit))
+
+    downloads: list[dict] = []
+    seen_urls: set[str] = set()
+    for source_payload in discovery.get("responses", []):
+        for book in source_payload.get("books", []):
+            url = _pick_download_url(book.get("download_links", []))
+            if not url or url in seen_urls:
+                continue
+            try:
+                file_path = download_book(url, EBOOK_ROOT)
+                parsed = parse_book(
+                    file_path,
+                    limit_pages=request.limit_pages,
+                    limit_chapters=request.limit_chapters,
+                )
+            except Exception as exc:
+                LOGGER.warning("Topic pipeline download failed", url=url, error=str(exc))
+                continue
+            downloads.append(
+                {
+                    "title": book.get("title"),
+                    "authors": book.get("authors", []),
+                    "source": source_payload.get("source"),
+                    "source_id": book.get("source_id"),
+                    "url": url,
+                    **parsed,
+                }
+            )
+            seen_urls.add(url)
+            if len(downloads) >= request.download_limit:
+                break
+        if len(downloads) >= request.download_limit:
+            break
+
+    return {"query": query, "downloads": downloads}
+
+
+@APP.get("/pipeline/topic/sse")
+async def pipeline_topic_sse(
+    query: str = Query(..., min_length=2),
+    sources: List[str] | None = Query(None),
+    limit: int = Query(30, ge=1, le=50),
+    download_limit: int = Query(30, ge=1, le=100),
+    limit_pages: int = Query(3, ge=1, le=12),
+    limit_chapters: int = Query(3, ge=1, le=12),
+) -> StreamingResponse:
+    payload = TopicPipelineRequest(
+        query=query,
+        sources=sources,
+        limit=limit,
+        download_limit=download_limit,
+        limit_pages=limit_pages,
+        limit_chapters=limit_chapters,
+    )
+
+    async def event_stream():
+        yield _sse_line("start", {"query": _normalize_query_text(query), "limit": limit, "download_limit": download_limit})
+        result = await run_in_threadpool(_pipeline_topic_sync, payload)
+        for idx, entry in enumerate(result.get("downloads", []), start=1):
+            entry["index"] = idx
+            yield _sse_line("book", entry)
+        yield _sse_line("complete", {"query": result.get("query"), "count": len(result.get("downloads", []))})
+
+    return StreamingResponse(
+        event_stream(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no",
+        },
+    )
 
 
 def start_fastapi(host: str = "0.0.0.0", port: int = 8000) -> None:

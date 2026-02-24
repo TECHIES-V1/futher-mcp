@@ -15,16 +15,19 @@ Further-MCP merges the PDF/EPUB processing layer from `ebook-mcp` with the OpenL
    ```
 
 2. **Prepare environment**
-   - Copy `.env.example` to `.env` and set values for:
-     - `OPENLIBRARY_BASE_URL` (defaults to `https://openlibrary.org`)
-     - `EBOOK_ROOT_PATH` (local folder where EPUB/PDF books live)
-     - `LOG_LEVEL` (e.g., `INFO`, `DEBUG`)
+   - Copy `.env.example` to `.env` and adjust any of the discovery endpoints if you need self-hosted mirrors:
+     - `OPENLIBRARY_BASE_URL` / `OPENLIBRARY_SEARCH_URL`
+     - `OPENARCHIVE_BASE_URL`
+     - `GUTENDEX_BASE_URL`
+     - `STANDARD_EBOOKS_OPDS_URL`
+     - `EBOOK_ROOT_PATH`
+     - `LOG_LEVEL`
    - Drop EPUB/PDF files under the configured `EBOOK_ROOT_PATH`.
 
 3. **Run the FastAPI layer**
-   ```bash
-   further-mcp-fastapi
-   ```
+    ```bash
+    further-mcp-fastapi
+    ```
    Defaults to `0.0.0.0:8000`. Use `uvicorn` arguments if you need HTTPS, auto-reload, etc.
 
 4. **Run the FastMCP pack**
@@ -49,8 +52,46 @@ Further-MCP merges the PDF/EPUB processing layer from `ebook-mcp` with the OpenL
 | `/ebooks/toc` | GET | Returns TOC for EPUB/PDF. |
 | `/ebooks/epub/chapter-markdown` | GET | Get chapter Markdown (`chapter` param). |
 | `/ebooks/pdf/chapter-text` | GET | Get text + pages for a PDF chapter title match. |
+| `/pipeline/fetch-parse` | POST | Download a discovery URL (EPUB/PDF/text), save it under `EBOOK_ROOT_PATH`, and return a parsed summary of the first few pages/chapters (send JSON payload, see below). |
+| `/discovery/search` | GET | Aggregate Gutendex / OpenLibrary / Standard Ebooks results with downloadable EPUB/PDF URLs (use `sources=gutendex`). |
+| `/discovery/gutendex` | GET | Search Gutendex directly. |
+| `/discovery/openlibrary` | GET | Search OpenLibrary and include Internet Archive download URLs for `ia` editions. |
+| `/discovery/standard-ebooks` | GET | Query the Standard Ebooks OPDS catalog for high quality EPUBs. |
 
 Use the `/health` endpoint (`GET /health`) to confirm the FastAPI server is alive.
+
+### Pipeline fetch + parse request
+
+Call `/pipeline/fetch-parse` with JSON (`Content-Type: application/json`):
+
+```json
+{
+  "url": "https://www.gutenberg.org/ebooks/51804.epub3.images",
+  "limit_pages": 2,
+  "limit_chapters": 2
+}
+```
+
+The response is structured so the AI can read it directly:
+
+```json
+{
+  "relative_path": "downloaded/3e6a3f8c8a7c_Plague_of_Pythons.epub",
+  "format": "epub",
+  "size_bytes": 123456,
+  "summary": "First couple paragraphs from chapter 1..."
+}
+```
+
+### Discovery Sources
+
+Further-MCP reaches out to the following discovery APIs so the MCP can deliver direct EPUB/PDF links:
+
+1. **Gutendex (Project Gutenberg mirror)** – `GET /discovery/gutendex` calls `https://gutendex.com/books/?search=<query>` and returns EPUB/plain text download URLs for 76,000+ public domain books.
+2. **Open Library + Internet Archive** – `GET /discovery/openlibrary` consumes `https://openlibrary.org/search.json?q=<query>` and attaches Internet Archive downloads (e.g., `https://archive.org/download/{id}/{id}.pdf`).
+3. **Standard Ebooks OPDS feed** – `GET /discovery/standard-ebooks` queries `https://standardebooks.org/opds` (with `search=`) to serve beautifully typeset EPUBs via OPDS acquisition links.
+
+The combined endpoint (`/discovery/search`) orchestrates these sources by default; pass `sources=gutendex&sources=openlibrary` to narrow the results.
 
 ## FastMCP Tools
 
@@ -66,13 +107,20 @@ Register the pack in Claude/Desktop using `further-mcp` (FastMCP) command. Avail
 - `get_pdf_toc(relative_path: str)`
 - `get_epub_chapter_markdown(relative_path: str, chapter_id: str)`
 - `get_pdf_chapter_text(relative_path: str, chapter_title: str)`
+- `discover_books(query: str, sources: list[str] | None = None, limit: int = 5)`
+- `fetch_and_parse_book(url: str, limit_pages: int = 3, limit_chapters: int = 3)`
 
 ## `.env` configuration
 
 ```env
 OPENLIBRARY_BASE_URL=https://openlibrary.org
+OPENLIBRARY_SEARCH_URL=https://openlibrary.org/search.json
+OPENARCHIVE_BASE_URL=https://archive.org/download
+GUTENDEX_BASE_URL=https://gutendex.com/books/
+STANDARD_EBOOKS_OPDS_URL=https://standardebooks.org/opds
 EBOOK_ROOT_PATH=ebooks
 LOG_LEVEL=INFO
+FURTHER_MCP_LOG_DIR=/tmp/further_mcp_logs
 ```
 
 The FastAPI server and MCP layer both respect the same environment file, so they stay aligned in deployments (Railway/Render) and local dev.
@@ -88,7 +136,7 @@ The `further-mcp.pack.json` manifest describes this project as a deployable `mcp
    - Add `PYTHONPATH=src` if required by your environment.
    - Configure the `.env` variables via the service’s UI.
 2. **Logs**
-   - Structured logs land in `logs/further_mcp.log`, human readable output shows in stdout/stderr for fast feedback.
+   - Structured logs land in the directory set by `FURTHER_MCP_LOG_DIR` (`/tmp/further_mcp_logs` by default), while stdout/stderr carries a readable mirror.
 
 ## Requirements
 

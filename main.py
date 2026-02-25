@@ -15,7 +15,10 @@ if str(SRC) not in sys.path:
     sys.path.insert(0, str(SRC))
 
 from further_mcp.fastapi_server import APP as app
-from further_mcp.mcp_server import main
+from further_mcp.mcp_server import main, MCP_APP
+
+# Mount the MCP server onto the FastAPI app
+app.mount("/mcp", MCP_APP.http_app(transport="sse"))
 
 
 if __name__ == "__main__":
